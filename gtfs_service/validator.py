@@ -6,7 +6,7 @@ from gtfs_service.models import (
     Stop, Route, Trip, StopTime, Calendar, CalendarDate, Shape
 )
 from gtfs_service.schemas import ValidationError, ValidationResponse
-from gtfs_service.utils import time_to_seconds
+from gtfs_service.utils import time_to_seconds, seconds_to_time
 
 
 class GTFSValidator:

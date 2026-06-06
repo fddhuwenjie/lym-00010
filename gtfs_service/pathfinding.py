@@ -162,27 +162,44 @@ class TransferFinder:
         visited = {}
         plans: List[TransferPlan] = []
 
-        start_state = (departure_secs, from_stop.stop_id, 0, [], set([from_stop.stop_id]))
+        start_state = (departure_secs, from_stop.stop_id, 0, [], set([from_stop.stop_id]), None)
         heapq.heappush(heap, (0, id(start_state), start_state))
 
         stop_routes_cache: Dict[str, List] = {}
+        stop_transfer_routes_cache: Dict[str, Set[str]] = {}
+
+        def get_transfer_routes(stop_id: str) -> Set[str]:
+            if stop_id not in stop_transfer_routes_cache:
+                routes = self._get_routes_at_stop(stop_id, active_services)
+                stop_transfer_routes_cache[stop_id] = set(r['route_id'] for r in routes)
+            return stop_transfer_routes_cache[stop_id]
+
+        to_stop_routes = get_transfer_routes(to_stop.stop_id)
+        best_arrival = float('inf')
 
         while heap and len(plans) < MAX_PLANS * 3:
             cost, _, state = heapq.heappop(heap)
-            current_time, current_stop_id, transfers, path, visited_stops = state
+            current_time, current_stop_id, ride_count, path, visited_stops, last_route_id = state
 
-            state_key = (current_stop_id, transfers)
+            transfers_so_far = max(0, ride_count - 1) if ride_count > 0 else 0
+            if transfers_so_far > MAX_TRANSFERS:
+                continue
+
+            if best_arrival != float('inf') and current_time > best_arrival * 2.5:
+                continue
+
+            state_key = (current_stop_id, ride_count)
             if state_key in visited and visited[state_key] <= current_time:
                 continue
             visited[state_key] = current_time
 
             if current_stop_id == to_stop.stop_id and path:
                 plan = self._path_to_plan(path, from_stop, to_stop, departure_secs)
-                if plan:
+                if plan and plan.transfers <= MAX_TRANSFERS:
                     plans.append(plan)
-                continue
-
-            if transfers > MAX_TRANSFERS:
+                    arrival_time = departure_secs + plan.total_duration_seconds
+                    if arrival_time < best_arrival:
+                        best_arrival = arrival_time
                 continue
 
             if current_stop_id not in stop_routes_cache:
@@ -191,8 +208,12 @@ class TransferFinder:
                 )
 
             routes_at_stop = stop_routes_cache[current_stop_id]
+            current_routes = get_transfer_routes(current_stop_id)
 
             for route_info in routes_at_stop:
+                if route_info['route_id'] == last_route_id:
+                    continue
+
                 route_dep_secs = time_to_seconds(route_info['departure_time'])
                 if route_dep_secs < current_time:
                     continue
@@ -204,6 +225,7 @@ class TransferFinder:
 
                 trip_stops = self._get_trip_stops(route_info['trip_id'])
                 current_seq = route_info['stop_sequence']
+                route_id = route_info['route_id']
 
                 for st in trip_stops:
                     if st.stop_sequence <= current_seq:
@@ -212,17 +234,26 @@ class TransferFinder:
                     if st.stop_id in visited_stops:
                         continue
 
+                    next_stop_routes = get_transfer_routes(st.stop_id)
+                    is_transfer_point = len(next_stop_routes - {route_id}) > 0
+                    is_destination = st.stop_id == to_stop.stop_id
+                    has_destination_route = bool(next_stop_routes & to_stop_routes)
+
+                    if not (is_transfer_point or is_destination or has_destination_route):
+                        if st.stop_sequence != trip_stops[-1].stop_sequence:
+                            continue
+
                     arr_delay = self._get_delay(route_info['trip_id'], st.stop_id)
                     actual_arr_secs = time_to_seconds(st.arrival_time) + arr_delay
 
                     transfer_bonus = 0
-                    if transfers > 0:
+                    if ride_count > 0:
                         if actual_dep_secs - current_time < TRANSFER_BUFFER_SECONDS:
                             transfer_bonus = 600
 
                     new_path = path + [{
                         'type': 'ride',
-                        'route_id': route_info['route_id'],
+                        'route_id': route_id,
                         'route_name': route_info['route_name'],
                         'trip_id': route_info['trip_id'],
                         'from_stop_id': current_stop_id,
@@ -237,13 +268,16 @@ class TransferFinder:
 
                     new_visited = visited_stops.copy()
                     new_visited.add(st.stop_id)
-                    new_cost = cost + (actual_arr_secs - departure_secs) + transfer_bonus
+                    ride_duration = actual_arr_secs - actual_dep_secs
+                    wait_duration = actual_dep_secs - current_time
+                    new_cost = cost + ride_duration + wait_duration + transfer_bonus
                     new_state = (
                         actual_arr_secs + TRANSFER_BUFFER_SECONDS,
                         st.stop_id,
-                        transfers + 1,
+                        ride_count + 1,
                         new_path,
-                        new_visited
+                        new_visited,
+                        route_id
                     )
 
                     heapq.heappush(heap, (new_cost, id(new_state), new_state))
@@ -283,7 +317,7 @@ class TransferFinder:
                 new_visited = visited_stops.copy()
                 new_visited.add(nb_stop.stop_id)
                 new_cost = cost + walk_dur * 1.5
-                new_state = (new_time, nb_stop.stop_id, transfers, new_path, new_visited)
+                new_state = (new_time, nb_stop.stop_id, ride_count, new_path, new_visited, None)
 
                 heapq.heappush(heap, (new_cost, id(new_state), new_state))
 
@@ -295,7 +329,9 @@ class TransferFinder:
 
         segments = []
         total_walk = 0
-        transfers = 0
+        ride_count = 0
+        prev_was_ride = False
+        prev_route_id = None
 
         for i, leg in enumerate(path):
             if leg['type'] == 'walk':
@@ -308,6 +344,8 @@ class TransferFinder:
                     duration_seconds=leg['duration_seconds']
                 )
                 total_walk += leg['duration_seconds']
+                prev_was_ride = False
+                prev_route_id = None
             else:
                 seg = TransferSegment(
                     type='ride',
@@ -322,16 +360,19 @@ class TransferFinder:
                     arrival_time=leg['arrival_time'],
                     duration_seconds=leg['arrival_secs'] - leg['departure_secs']
                 )
-                if i > 0 and path[i-1]['type'] != 'ride':
-                    transfers += 1
-                elif i > 0 and path[i-1]['type'] == 'ride' and path[i-1]['route_id'] != leg['route_id']:
-                    transfers += 1
+                if not prev_was_ride:
+                    ride_count += 1
+                elif prev_route_id != leg['route_id']:
+                    ride_count += 1
+                prev_was_ride = True
+                prev_route_id = leg['route_id']
 
             segments.append(seg)
 
         if not segments:
             return None
 
+        transfers = max(0, ride_count - 1) if ride_count > 0 else 0
         final_time = path[-1]['arrival_secs']
         total_dur = final_time - departure_secs
 
@@ -346,20 +387,45 @@ class TransferFinder:
         )
 
     def _deduplicate_plans(self, plans: List[TransferPlan]) -> List[TransferPlan]:
-        seen = set()
-        unique = []
+        groups: Dict[str, List[TransferPlan]] = {}
 
         for plan in plans:
             key_parts = []
             for seg in plan.segments:
                 if seg.type == 'ride':
-                    key_parts.append(f"R:{seg.route_id}")
+                    key_parts.append(f"R:{seg.route_id}:{seg.from_stop_id}->{seg.to_stop_id}")
                 else:
-                    key_parts.append(f"W:{seg.to_stop_id}")
+                    key_parts.append(f"W:{seg.from_stop_id}->{seg.to_stop_id}")
             key = '|'.join(key_parts)
 
-            if key not in seen:
-                seen.add(key)
-                unique.append(plan)
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(plan)
 
-        return unique
+        unique = []
+        for key, group_plans in groups.items():
+            group_plans.sort(key=lambda p: (p.transfers, p.total_duration_seconds, p.score))
+            unique.append(group_plans[0])
+
+        unique.sort(key=lambda p: (p.transfers, p.total_duration_seconds, p.score))
+
+        best_by_transfers = {}
+        for plan in unique:
+            t = plan.transfers
+            if t not in best_by_transfers or plan.total_duration_seconds < best_by_transfers[t].total_duration_seconds:
+                best_by_transfers[t] = plan
+
+        candidates = sorted(best_by_transfers.values(), key=lambda p: (p.transfers, p.total_duration_seconds, p.score))
+        
+        if not candidates:
+            return []
+        
+        min_duration = candidates[0].total_duration_seconds
+        filtered = []
+        for plan in candidates:
+            if plan.total_duration_seconds <= min_duration * 2:
+                filtered.append(plan)
+            if len(filtered) >= MAX_PLANS:
+                break
+
+        return filtered
