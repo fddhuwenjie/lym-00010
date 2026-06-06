@@ -70,6 +70,8 @@ class TransferSegment(BaseModel):
 class TransferPlan(BaseModel):
     total_duration_seconds: int
     total_walking_seconds: int
+    total_waiting_seconds: int
+    total_riding_seconds: int
     transfers: int
     segments: List[TransferSegment]
     score: float

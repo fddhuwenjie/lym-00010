@@ -146,6 +146,8 @@ class TransferFinder:
         return TransferPlan(
             total_duration_seconds=walk_time,
             total_walking_seconds=walk_time,
+            total_waiting_seconds=0,
+            total_riding_seconds=0,
             transfers=0,
             segments=[segment],
             score=walk_time * 2.0
@@ -270,7 +272,7 @@ class TransferFinder:
                     new_visited.add(st.stop_id)
                     ride_duration = actual_arr_secs - actual_dep_secs
                     wait_duration = actual_dep_secs - current_time
-                    new_cost = cost + ride_duration + wait_duration + transfer_bonus
+                    new_cost = cost + ride_duration + wait_duration * 1.2 + transfer_bonus
                     new_state = (
                         actual_arr_secs + TRANSFER_BUFFER_SECONDS,
                         st.stop_id,
@@ -329,9 +331,12 @@ class TransferFinder:
 
         segments = []
         total_walk = 0
+        total_ride = 0
         ride_count = 0
         prev_was_ride = False
         prev_route_id = None
+        prev_arrival_secs = departure_secs
+        total_wait = 0
 
         for i, leg in enumerate(path):
             if leg['type'] == 'walk':
@@ -346,7 +351,13 @@ class TransferFinder:
                 total_walk += leg['duration_seconds']
                 prev_was_ride = False
                 prev_route_id = None
+                prev_arrival_secs = leg['arrival_secs']
             else:
+                wait_before = leg['departure_secs'] - prev_arrival_secs
+                if wait_before > 0:
+                    total_wait += wait_before
+
+                ride_dur = leg['arrival_secs'] - leg['departure_secs']
                 seg = TransferSegment(
                     type='ride',
                     from_stop_id=leg['from_stop_id'],
@@ -358,14 +369,16 @@ class TransferFinder:
                     trip_id=leg['trip_id'],
                     departure_time=leg['departure_time'],
                     arrival_time=leg['arrival_time'],
-                    duration_seconds=leg['arrival_secs'] - leg['departure_secs']
+                    duration_seconds=ride_dur
                 )
+                total_ride += ride_dur
                 if not prev_was_ride:
                     ride_count += 1
                 elif prev_route_id != leg['route_id']:
                     ride_count += 1
                 prev_was_ride = True
                 prev_route_id = leg['route_id']
+                prev_arrival_secs = leg['arrival_secs']
 
             segments.append(seg)
 
@@ -376,11 +389,13 @@ class TransferFinder:
         final_time = path[-1]['arrival_secs']
         total_dur = final_time - departure_secs
 
-        score = total_dur + (transfers * 300) + (total_walk * 0.5)
+        score = total_dur + (transfers * 300) + (total_walk * 0.5) + (total_wait * 0.3)
 
         return TransferPlan(
             total_duration_seconds=total_dur,
             total_walking_seconds=total_walk,
+            total_waiting_seconds=total_wait,
+            total_riding_seconds=total_ride,
             transfers=transfers,
             segments=segments,
             score=score

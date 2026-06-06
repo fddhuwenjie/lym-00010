@@ -374,10 +374,3 @@ class GTFSValidator:
                 f"Stop {stop_id} is not served by any trip",
                 stop_id
             )
-
-
-def seconds_to_time(seconds: int) -> str:
-    h = seconds // 3600
-    m = (seconds % 3600) // 60
-    s = seconds % 60
-    return f"{h:02d}:{m:02d}:{s:02d}"
