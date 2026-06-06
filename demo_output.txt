@@ -1,0 +1,68 @@
+﻿
+============================================================
+  GTFS 鍏氦鏁版嵁瑙ｆ瀽涓庢崲涔樻煡璇?API - 楠岃瘉婕旂ず
+============================================================
+
+[1/6] 妫€鏌ユ湇鍔＄姸鎬?..
+  鏈嶅姟杩愯姝ｅ父
+  鏁版嵁: 36涓珯鐐? 5鏉＄嚎璺? 86涓彮娆?
+
+[2/6] 鏌ヨ闄勮繎绔欑偣...
+  鎵惧埌 2 涓檮杩戠珯鐐?
+    - S001: Central East Station
+    - S002: Central South Station
+
+[3/6] 鏌ヨ鎵€鏈夌嚎璺?..
+  鍏?5 鏉＄嚎璺?
+    - 1璺? 涓滆タ骞茬嚎
+    - 2璺? 鍗楀寳骞茬嚎
+    - 3璺? 瀵硅绾?
+    - 4璺? 鐜嚎
+    - 5璺? 甯傞儕绾?
+
+[4/6] 鏌ヨ绾胯矾鏃跺埢琛?(R001, 鍛ㄤ竴)...
+  杩愯惀鐘舵€? 姝ｅ父
+  鐝鏁伴噺: 8
+  棣栫彮鍙戣溅: 06:30:15
+
+[5/6] 鎹箻鏌ヨ (S001 -> S036, 鍛ㄤ竴 08:30)...
+  浠?Central East Station 鍒?Suburb New Station
+  鎵惧埌 4 涓崲涔樻柟妗?
+
+  鏂规 1: 鎬昏€楁椂 66 鍒嗛挓, 鎹箻 0 娆?
+    [涔樿溅] 4璺?Central East Station(09:30:15) -> Suburb New Station(09:36:00)
+
+  鏂规 2: 鎬昏€楁椂 66 鍒嗛挓, 鎹箻 1 娆?
+    [涔樿溅] 1璺?Central East Station(08:30:15) -> Central New Station(08:45:00)
+    [涔樿溅] 4璺?Central New Station(09:33:15) -> Suburb New Station(09:36:00)
+
+  鏂规 3: 鎬昏€楁椂 186 鍒嗛挓, 鎹箻 1 娆?
+    [涔樿溅] 1璺?Central East Station(08:30:15) -> Central New Station(08:45:00)
+    [涔樿溅] 4璺?Central New Station(09:33:15) -> Suburb East Station(09:39:00)
+    [涔樿溅] 4璺?Suburb East Station(11:33:15) -> Suburb New Station(11:36:00)
+
+[6/6] 鏁版嵁涓€鑷存€ф牎楠?..
+  鏍￠獙瀹屾垚锛屽彂鐜?17 涓棶棰?
+    - [stop_without_stop_times] Stop S019 is not served by any trip
+    - [stop_without_stop_times] Stop S024 is not served by any trip
+    - [stop_without_stop_times] Stop S011 is not served by any trip
+
+============================================================
+  鎵€鏈夊姛鑳介獙璇侀€氳繃锛?
+
+  API 鏂囨。:  http://localhost:8010/docs
+  鏈嶅姟绔彛:  8010
+  鏁版嵁鏂囦欢:  gtfs.db (SQLite)
+  绀轰緥鏁版嵁:  sample_gtfs/sample_gtfs.zip
+
+  curl 楠岃瘉鍛戒护:
+    鎹箻鏌ヨ:
+      curl -s "http://localhost:8010/api/v1/transfers?from_stop_id=S001&to_stop_id=S036&departure_time=2026-06-09%2008:30"
+    鏃跺埢琛?
+      curl -s "http://localhost:8010/api/v1/routes/R001/schedule?target_date=2026-06-09&direction_id=0"
+    闄勮繎绔欑偣:
+      curl -s "http://localhost:8010/api/v1/stops/nearby?lat=31.2304&lon=121.4737&radius=1000"
+    鏁版嵁鏍￠獙:
+      curl -s "http://localhost:8010/api/v1/validate"
+============================================================
+

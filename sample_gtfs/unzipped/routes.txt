@@ -1,0 +1,6 @@
+route_id,route_short_name,route_long_name,route_type,route_color
+R001,1路,东西干线,3,FF0000
+R002,2路,南北干线,3,00FF00
+R003,3路,对角线,3,0000FF
+R004,4路,环线,3,FF00FF
+R005,5路,市郊线,3,FFFF00

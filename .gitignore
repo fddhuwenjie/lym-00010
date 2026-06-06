@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+python/
+python-embed.zip
+get-pip.py
+node_modules/
+*.db-shm
+*.db-wal
+.DS_Store
